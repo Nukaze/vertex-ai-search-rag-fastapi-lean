@@ -17,10 +17,13 @@ app = FastAPI(
 )
 
 # Add CORS middleware for cross-origin requests
-# Allows requests from localhost (dev) and Vercel deployments (prod)
+# Allows requests from:
+# - Localhost (development)
+# - Vercel deployments (production)
+# - Any custom domains (if needed later)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000|http://127\.0\.0\.1:3000",
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000|http://127\.0\.0\.1:3000|https://.*\.9expert\.com",
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
