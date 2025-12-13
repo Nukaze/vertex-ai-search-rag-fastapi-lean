@@ -1,0 +1,91 @@
+# .dockerignore - Exclude files from Docker build context
+# This speeds up builds and reduces final image size
+
+# ============================================
+# Git & Version Control
+# ============================================
+.git
+.gitignore
+.gitattributes
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# ============================================
+# Environment & Secrets
+# ============================================
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.json
+!requirements.txt
+
+# Service account keys (except if needed for deployment)
+*-key.json
+*service-account*.json
+
+# ============================================
+# Development Tools
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ============================================
+# Testing & Documentation
+# ============================================
+*.md
+README.md
+DEPLOYMENT*.md
+CLAUDE.md
+API_DOCUMENTATION.md
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+*.log
+
+# ============================================
+# Docker
+# ============================================
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# ============================================
+# Render & Other Platforms
+# ============================================
+render.yaml
+.render/
+
+# ============================================
+# Misc
+# ============================================
+*.bak
+*.tmp
+*.temp
+.cache/
