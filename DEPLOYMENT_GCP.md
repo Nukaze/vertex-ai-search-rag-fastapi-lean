@@ -116,12 +116,12 @@ gcloud auth configure-docker
 ### Step 2.3: Build Docker Image with Cloud Build (Recommended)
 **Option A: Cloud Build (Faster, uses GCP servers)**
 ```bash
-gcloud builds submit --tag gcr.io/YOUR-PROJECT-ID/vertex-search-api:latest
+gcloud builds submit --tag gcr.io/<YOUR-PROJECT-ID>/vertex-search-api:latest
 ```
 
 **Example:**
 ```bash
-gcloud builds submit --tag gcr.io/expert-api-prod/vertex-search-api:latest
+gcloud builds submit --tag gcr.io/expert-ai-chatbot/vertex-search-api:latest
 ```
 
 **Build time:** ~2-3 minutes
@@ -151,6 +151,16 @@ gcloud container images describe gcr.io/YOUR-PROJECT-ID/vertex-search-api:latest
 ### Step 3.1: Deploy the Service
 
 **Basic Deployment (Manual Environment Variables):**
+```bash
+# skeleton command to Add environment variables later on GCP GUI
+gcloud run deploy vertex-search-api \
+  --image gcr.io/expert-ai-chatbot/vertex-search-api:latest \
+  --platform managed \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --port 8080
+```
+
 ```bash
 gcloud run deploy vertex-search-api \
   --image gcr.io/YOUR-PROJECT-ID/vertex-search-api:latest \

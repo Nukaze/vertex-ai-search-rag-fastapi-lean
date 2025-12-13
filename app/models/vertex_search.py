@@ -44,7 +44,7 @@ class FormattedCitation(BaseModel):
     relevance_score: Optional[float] = Field(None, description="Relevance score 0-1", ge=0, le=1)
 
     # Keep original URI for debugging (not shown to end users)
-    _internal_uri: Optional[str] = Field(None, alias="uri", exclude=True)
+    internal_uri: Optional[str] = Field(None, alias="uri", exclude=True)
 
 
 class FormattedSearchResponse(BaseModel):
