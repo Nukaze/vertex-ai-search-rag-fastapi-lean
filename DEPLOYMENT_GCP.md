@@ -161,6 +161,10 @@ gcloud run deploy vertex-search-api \
   --port 8080
 ```
 
+```powershell
+gcloud run deploy vertex-search-api --image gcr.io/expert-ai-chatbot/vertex-search-api:latest --platform managed --region asia-southeast1 --allow-unauthenticated --port 8080
+```
+
 ```bash
 gcloud run deploy vertex-search-api \
   --image gcr.io/YOUR-PROJECT-ID/vertex-search-api:latest \
