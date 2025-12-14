@@ -267,28 +267,107 @@ class VertexAIService:
 
         return context.strip(), citations
 
-    async def search_with_summary(self, query: str, page_size: int = 5) -> dict:
+    async def search_with_summary(
+        self,
+        query: str,
+        page_size: int = 5,
+        # Query enhancement
+        query_expansion: str = "AUTO",
+        spell_correction: str = "AUTO",
+        # Filtering
+        filter_expr: str = None,
+        canonical_filter: str = None,
+        # Boosting
+        boost_spec: dict = None,
+        # Facets
+        facet_specs: list = None,
+        # Relevance
+        relevance_threshold: str = None,
+        # Summary customization
+        custom_system_prompt: str = None,
+        use_semantic_chunks: bool = True,
+        summary_result_count: int = 5,
+        language_code: str = "th",
+        summary_model_version: str = "stable",  # NEW: Model version control
+        # Advanced
+        return_relevance_score: bool = False,
+        safe_search: bool = False
+    ) -> dict:
         """
-        Get AI summary directly from Vertex AI Search
-        Returns: dict with summary, citations, totalResults
+        Get AI summary directly from Vertex AI Search - ENHANCED
+        Returns: dict with summary, citations, totalResults, facets
         """
         endpoint = self._build_vertex_endpoint()
         access_token = self._get_access_token()
 
+        # Build base payload
         payload = {
             "query": query,
             "pageSize": page_size,
-            "queryExpansionSpec": {"condition": "AUTO"},
-            "spellCorrectionSpec": {"mode": "AUTO"},
-            "contentSearchSpec": {
-                "summarySpec": {
-                    "summaryResultCount": 5,
-                    "includeCitations": True,
-                    "ignoreAdversarialQuery": True,
-                    "modelSpec": {"version": "stable"}
-                }
-            }
+            "queryExpansionSpec": {"condition": query_expansion},
+            "spellCorrectionSpec": {"mode": spell_correction},
         }
+
+        # Add filters if provided
+        if filter_expr:
+            payload["filter"] = filter_expr
+        if canonical_filter:
+            payload["canonicalFilter"] = canonical_filter
+
+        # Add boosting if provided
+        if boost_spec:
+            payload["boostSpec"] = boost_spec
+
+        # Add facets if provided
+        if facet_specs:
+            payload["facetSpecs"] = facet_specs
+
+        # Add relevance threshold if provided
+        if relevance_threshold:
+            payload["relevanceThreshold"] = relevance_threshold
+
+        # Add safe search if enabled
+        if safe_search:
+            payload["safeSearch"] = True
+
+        # Build summary spec
+        summary_spec = {
+            "summaryResultCount": summary_result_count,
+            "includeCitations": True,
+            "ignoreAdversarialQuery": True,
+            "ignoreJailBreakingQuery": True,  # Filter prompt injections
+            "modelSpec": {"version": summary_model_version}  # Use configurable model version
+        }
+
+        # Add semantic chunks if enabled
+        if use_semantic_chunks:
+            summary_spec["useSemanticChunks"] = True
+
+        # Add custom system prompt if provided
+        if custom_system_prompt:
+            summary_spec["modelPromptSpec"] = {
+                "preamble": custom_system_prompt
+            }
+
+        # Add language code
+        if language_code:
+            summary_spec["languageCode"] = language_code
+
+        # Add content search spec
+        payload["contentSearchSpec"] = {
+            "summarySpec": summary_spec
+        }
+
+        # Add snippet spec for better previews
+        payload["contentSearchSpec"]["snippetSpec"] = {
+            "returnSnippet": True
+        }
+
+        # Add relevance score if requested
+        if return_relevance_score:
+            payload["relevanceScoreSpec"] = {
+                "returnRelevanceScore": True
+            }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -359,9 +438,28 @@ class VertexAIService:
                     relevance_score=None
                 ))
 
+        # Extract facets if present
+        facets = []
+        facet_results = data.get("facets", [])
+        for facet_result in facet_results:
+            facet_key = facet_result.get("key")
+            facet_values_raw = facet_result.get("values", [])
+
+            facet_values = [
+                {"value": fv.get("value"), "count": fv.get("count", 0)}
+                for fv in facet_values_raw
+            ]
+
+            if facet_key and facet_values:
+                facets.append({
+                    "key": facet_key,
+                    "values": facet_values
+                })
+
         return {
             "summary": summary_with_metadata.get("summary") or summary_data.get("summary"),
             "citations": citations,
+            "facets": facets if facets else None,
             "totalResults": data.get("totalSize")
         }
 
@@ -370,18 +468,49 @@ class VertexAIService:
         context: str,
         query: str,
         citations: list[FormattedCitation],
-        model: str = "gemini-2.0-flash"
+        model: str = "gemini-2.0-flash",
+        # Generation config parameters
+        temperature: float = None,
+        top_k: int = None,
+        top_p: float = None,
+        max_output_tokens: int = None
     ) -> AsyncGenerator[str, None]:
         """
-        Generate streaming response using Gemini with RAG context
+        Generate streaming response using Gemini with RAG context - ENHANCED
         Yields SSE-formatted chunks
+
+        Args:
+            context: RAG context from Vertex AI Search
+            query: User query
+            citations: List of citations
+            model: Gemini model name
+            temperature: Sampling temperature (0.0-2.0)
+            top_k: Top-K sampling (1-40)
+            top_p: Top-P nucleus sampling (0.0-1.0)
+            max_output_tokens: Maximum output tokens (1-8192)
         """
         if not self.gemini_api_key:
             raise ValueError("GEMINI_API_KEY required for streaming mode")
 
         # Configure Gemini
         genai.configure(api_key=self.gemini_api_key)
-        gemini_model = genai.GenerativeModel(model)
+
+        # Build generation config
+        generation_config = {}
+        if temperature is not None:
+            generation_config["temperature"] = temperature
+        if top_k is not None:
+            generation_config["top_k"] = top_k
+        if top_p is not None:
+            generation_config["top_p"] = top_p
+        if max_output_tokens is not None:
+            generation_config["max_output_tokens"] = max_output_tokens
+
+        # Create model with optional generation config
+        gemini_model = genai.GenerativeModel(
+            model,
+            generation_config=generation_config if generation_config else None
+        )
 
         # Build prompt with context
         prompt = f"""คุณเป็นผู้ช่วย AI ของ 9Expert Training ซึ่งเป็นศูนย์ฝึกอบรมด้าน Data Analytics, Business Intelligence และ AI

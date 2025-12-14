@@ -80,13 +80,17 @@ async def vertex_search(
                     responseTime=round(response_time, 2)
                 )
 
-            # Stream response using Gemini
+            # Stream response using Gemini with generation config
             return StreamingResponse(
                 vertex_service.generate_streaming_response(
                     context=context,
                     query=request.query,
                     citations=citations,
-                    model=request.model
+                    model=request.model,
+                    temperature=request.temperature,
+                    top_k=request.topK,
+                    top_p=request.topP,
+                    max_output_tokens=request.maxOutputTokens
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -101,9 +105,59 @@ async def vertex_search(
 
         else:  # mode == "direct"
             # ===== DIRECT MODE =====
+
+            # Build boost spec if provided
+            boost_spec_dict = None
+            if request.boostSpec:
+                boost_spec_dict = {}
+                if request.boostSpec.conditionBoostSpecs:
+                    boost_spec_dict["conditionBoostSpecs"] = [
+                        {"condition": b.condition, "boost": b.boost}
+                        for b in request.boostSpec.conditionBoostSpecs
+                    ]
+                if request.boostSpec.freshnessBoostSpecs:
+                    boost_spec_dict["freshnessBoostSpecs"] = [
+                        {
+                            "datetimeField": b.datetimeField,
+                            "freshnessDuration": b.freshnessDuration,
+                            "boost": b.boost
+                        }
+                        for b in request.boostSpec.freshnessBoostSpecs
+                    ]
+
+            # Build facet specs if provided
+            facet_specs_list = None
+            if request.facetSpecs:
+                facet_specs_list = [
+                    {
+                        "facetKey": {
+                            "key": f.facetKey.key,
+                            "restrictedValues": f.facetKey.restrictedValues
+                        },
+                        "limit": f.limit,
+                        "excludedFilterKeys": f.excludedFilterKeys,
+                        "enableDynamicPosition": f.enableDynamicPosition
+                    }
+                    for f in request.facetSpecs
+                ]
+
             result = await vertex_service.search_with_summary(
                 query=request.query,
-                page_size=request.pageSize
+                page_size=request.pageSize,
+                query_expansion=request.queryExpansion,
+                spell_correction=request.spellCorrection,
+                filter_expr=request.filter,
+                canonical_filter=request.canonicalFilter,
+                boost_spec=boost_spec_dict,
+                facet_specs=facet_specs_list,
+                relevance_threshold=request.relevanceThreshold,
+                custom_system_prompt=request.customSystemPrompt,
+                use_semantic_chunks=request.useSemanticChunks,
+                summary_result_count=request.summaryResultCount,
+                language_code=request.languageCode,
+                summary_model_version=request.summaryModelVersion,
+                return_relevance_score=request.returnRelevanceScore,
+                safe_search=request.safeSearch
             )
 
             response_time = time.time() - start_time
@@ -114,6 +168,7 @@ async def vertex_search(
                 query=request.query,
                 summary=result["summary"] or "ไม่พบคำตอบที่เหมาะสมในฐานความรู้",
                 citations=result["citations"],
+                facets=result.get("facets"),
                 totalResults=result["totalResults"],
                 responseTime=round(response_time, 2)
             )
