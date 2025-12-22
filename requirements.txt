@@ -19,3 +19,6 @@ httpx==0.28.1
 
 # Google Cloud Platform Authentication (for Vertex AI Search)
 google-auth==2.35.0
+
+# Google Cloud Storage (for feedback logging)
+google-cloud-storage==2.18.2
