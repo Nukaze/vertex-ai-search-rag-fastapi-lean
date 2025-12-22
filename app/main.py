@@ -6,7 +6,7 @@ Standalone service for Vertex AI Search with RAG and Gemini streaming
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import vertex_search
+from app.routers import vertex_search, feedback
 
 # Run with: uvicorn app.main:app --reload --port 8000
 
@@ -33,6 +33,9 @@ app.add_middleware(
 # Register Vertex Search router
 app.include_router(vertex_search.router, prefix="/api", tags=["vertex-search"])
 
+# Register Feedback router
+app.include_router(feedback.router, prefix="/api", tags=["feedback"])
+
 
 @app.get("/")
 async def root():
@@ -46,6 +49,7 @@ async def root():
         "version": settings.api_version,
         "endpoints": {
             "vertex_search": "/api/vertex-search",
+            "feedback": "/api/feedback",
             "docs": "/docs",
             "redoc": "/redoc"
         }
