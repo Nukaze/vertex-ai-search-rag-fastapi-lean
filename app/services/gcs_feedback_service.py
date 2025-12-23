@@ -11,6 +11,7 @@ Structure:
 
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional, Tuple
 from google.cloud import storage
 from google.oauth2 import service_account
@@ -67,12 +68,13 @@ class GCSFeedbackService:
 
     def _get_current_date(self) -> str:
         """
-        Get current date in UTC for folder naming
+        Get current date in Bangkok timezone (UTC+7) for folder naming
 
         Returns:
             Date string in format YYYY-MM-DD
         """
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        bangkok_tz = ZoneInfo("Asia/Bangkok")
+        return datetime.now(bangkok_tz).strftime("%Y-%m-%d")
 
     def _check_and_clear_latest_folder(self, current_date: str) -> None:
         """
@@ -154,9 +156,10 @@ class GCSFeedbackService:
             return date_folder, archive_path, latest_path
 
         except Exception as e:
-            # Fallback: use current time if parsing fails
+            # Fallback: use current Bangkok time if parsing fails
             print(f"[GCS] Warning: Failed to parse timestamp '{timestamp_iso}', using current time: {e}")
-            now = datetime.utcnow()
+            bangkok_tz = ZoneInfo("Asia/Bangkok")
+            now = datetime.now(bangkok_tz)
             date_folder = now.strftime("%Y-%m-%d")
             prefix = "positive" if feedback_type == "up" else "negative"
             time_part = now.strftime("%Y%m%d_%H%M%S")
@@ -190,8 +193,9 @@ class GCSFeedbackService:
             # Get bucket (assumes bucket already exists)
             bucket = self._get_bucket()
 
-            # Generate server timestamp (single source of truth)
-            created_at = datetime.utcnow().isoformat() + "Z"
+            # Generate server timestamp in Bangkok timezone (UTC+7)
+            bangkok_tz = ZoneInfo("Asia/Bangkok")
+            created_at = datetime.now(bangkok_tz).isoformat()
 
             # Get current date and check if we need to clear latest folder
             current_date = self._get_current_date()
