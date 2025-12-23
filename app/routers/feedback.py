@@ -77,11 +77,16 @@ async def submit_feedback(
                 error=None
             )
         else:
-            # GCS logging failed, but don't expose internal error to user
-            print(f"[Feedback] GCS logging failed: {result['error']}")
+            # GCS logging failed, expose error details for debugging
+            error_msg = result.get('error', 'Unknown error')
+            print(f"[Feedback] GCS logging failed: {error_msg}")
             raise HTTPException(
                 status_code=500,
-                detail="ขออภัย ไม่สามารถบันทึกคำติชมได้ กรุณาลองใหม่อีกครั้ง"
+                detail={
+                    "message": "ขออภัย ไม่สามารถบันทึกคำติชมได้ กรุณาลองใหม่อีกครั้ง",
+                    "error": error_msg,
+                    "debug": "GCS logging failed"
+                }
             )
 
     except HTTPException:
@@ -89,9 +94,16 @@ async def submit_feedback(
         raise
 
     except Exception as e:
-        # Unexpected errors
-        print(f"[Feedback] Unexpected error: {str(e)}")
+        # Unexpected errors - expose for debugging
+        error_msg = str(e)
+        print(f"[Feedback] Unexpected error: {error_msg}")
+        import traceback
+        traceback.print_exc()  # Print full traceback to logs
         raise HTTPException(
             status_code=500,
-            detail="ขออภัย เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง"
+            detail={
+                "message": "ขออภัย เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+                "error": error_msg,
+                "debug": "Unexpected exception in feedback endpoint"
+            }
         )
