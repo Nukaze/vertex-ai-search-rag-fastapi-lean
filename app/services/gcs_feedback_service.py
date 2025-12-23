@@ -1,11 +1,17 @@
 """
 GCS Feedback Service - Handles logging user feedback to Google Cloud Storage
 Stores feedback as NDJSON (Newline Delimited JSON) with datetime-based filenames for sorting
+
+Structure:
+- chat-feedback/YYYY-MM-DD/positive_YYYYMMDD_HHMMSS_ms.json  (archive, thumbs up)
+- chat-feedback/YYYY-MM-DD/negative_YYYYMMDD_HHMMSS_ms.json  (archive, thumbs down)
+- chat-feedback/latest/positive_YYYYMMDD_HHMMSS_ms.json       (today only, cleared daily)
+- chat-feedback/latest/negative_YYYYMMDD_HHMMSS_ms.json       (today only, cleared daily)
 """
 
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 from google.cloud import storage
 from google.oauth2 import service_account
 from app.models.feedback import FeedbackRequest
@@ -67,41 +73,116 @@ class GCSFeedbackService:
             print(f"[GCS] Bucket '{self.feedback_bucket_name}' created successfully")
             return bucket
 
-    def _generate_feedback_id(self, timestamp_iso: str) -> str:
+    def _get_current_date(self) -> str:
         """
-        Generate unique feedback ID based on timestamp for sorting
+        Get current date in UTC for folder naming
 
-        Format: feedback_YYYYMMDD_HHMMSS_milliseconds.json
-        Example: feedback_20250122_143025_456.json
+        Returns:
+            Date string in format YYYY-MM-DD
+        """
+        return datetime.utcnow().strftime("%Y-%m-%d")
 
-        This format ensures:
-        - Files are automatically sorted by datetime in GCS
-        - Easy to filter by date range
-        - Collision-resistant (millisecond precision)
+    def _check_and_clear_latest_folder(self, current_date: str) -> None:
+        """
+        Check if it's a new day and clear the latest/ folder if needed
+
+        Strategy:
+        - Store last_cleared_date in a marker file: chat-feedback/latest/.last_cleared
+        - If current date != last_cleared_date, delete all files in latest/ and update marker
+
+        Args:
+            current_date: Current date in YYYY-MM-DD format
+        """
+        try:
+            bucket = self.storage_client.get_bucket(self.feedback_bucket_name)
+            marker_blob = bucket.blob("chat-feedback/latest/.last_cleared")
+
+            # Check if marker exists and get last cleared date
+            if marker_blob.exists():
+                last_cleared = marker_blob.download_as_text().strip()
+
+                if last_cleared == current_date:
+                    # Already cleared today, no action needed
+                    return
+
+            # New day - clear all feedback files in latest/
+            print(f"[GCS] New day detected ({current_date}), clearing chat-feedback/latest/ folder...")
+
+            blobs = bucket.list_blobs(prefix="chat-feedback/latest/")
+            deleted_count = 0
+
+            for blob in blobs:
+                # Don't delete the marker file itself during iteration
+                if not blob.name.endswith(".last_cleared"):
+                    blob.delete()
+                    deleted_count += 1
+
+            # Update marker file with current date
+            marker_blob.upload_from_string(current_date, content_type="text/plain")
+
+            print(f"[GCS] Cleared {deleted_count} files from chat-feedback/latest/")
+
+        except Exception as e:
+            # Don't fail feedback submission if cleanup fails
+            print(f"[GCS] Warning: Failed to clear latest folder: {e}")
+
+    def _generate_feedback_paths(self, timestamp_iso: str, feedback_type: str) -> Tuple[str, str, str]:
+        """
+        Generate both archive and latest paths for feedback with sentiment prefix
+
+        Format:
+        - Archive: chat-feedback/YYYY-MM-DD/positive_YYYYMMDD_HHMMSS_milliseconds.json
+        - Latest: chat-feedback/latest/positive_YYYYMMDD_HHMMSS_milliseconds.json
 
         Args:
             timestamp_iso: ISO 8601 timestamp string
+            feedback_type: "up" or "down"
 
         Returns:
-            Unique feedback filename
+            Tuple of (date_folder, archive_path, latest_path)
+            Example:
+                ("2025-01-22",
+                 "chat-feedback/2025-01-22/negative_20250122_143025_456.json",
+                 "chat-feedback/latest/negative_20250122_143025_456.json")
         """
         try:
             dt = datetime.fromisoformat(timestamp_iso.replace('Z', '+00:00'))
-            # Format: YYYYMMDD_HHMMSS_milliseconds
-            date_part = dt.strftime("%Y%m%d_%H%M%S")
+            # Date folder: YYYY-MM-DD
+            date_folder = dt.strftime("%Y-%m-%d")
+            # Filename prefix based on feedback type
+            prefix = "positive" if feedback_type == "up" else "negative"
+            # Timestamp: YYYYMMDD_HHMMSS_milliseconds
+            time_part = dt.strftime("%Y%m%d_%H%M%S")
             milliseconds = dt.microsecond // 1000
-            return f"feedback_{date_part}_{milliseconds:03d}.json"
+            filename = f"{prefix}_{time_part}_{milliseconds:03d}.json"
+
+            archive_path = f"chat-feedback/{date_folder}/{filename}"
+            latest_path = f"chat-feedback/latest/{filename}"
+
+            return date_folder, archive_path, latest_path
+
         except Exception as e:
             # Fallback: use current time if parsing fails
             print(f"[GCS] Warning: Failed to parse timestamp '{timestamp_iso}', using current time: {e}")
             now = datetime.utcnow()
-            date_part = now.strftime("%Y%m%d_%H%M%S")
+            date_folder = now.strftime("%Y-%m-%d")
+            prefix = "positive" if feedback_type == "up" else "negative"
+            time_part = now.strftime("%Y%m%d_%H%M%S")
             milliseconds = now.microsecond // 1000
-            return f"feedback_{date_part}_{milliseconds:03d}.json"
+            filename = f"{prefix}_{time_part}_{milliseconds:03d}.json"
+
+            archive_path = f"chat-feedback/{date_folder}/{filename}"
+            latest_path = f"chat-feedback/latest/{filename}"
+
+            return date_folder, archive_path, latest_path
 
     async def log_feedback(self, feedback: FeedbackRequest) -> dict:
         """
-        Log feedback to GCS as NDJSON
+        Log feedback to GCS in both archive and latest locations
+
+        Writes to:
+        1. chat-feedback/YYYY-MM-DD/{positive|negative}_xxx.json (permanent archive)
+        2. chat-feedback/latest/{positive|negative}_xxx.json (today's data, cleared daily)
 
         Args:
             feedback: FeedbackRequest object with user feedback data
@@ -109,7 +190,7 @@ class GCSFeedbackService:
         Returns:
             dict with:
                 - success: bool
-                - feedbackId: str (filename)
+                - feedbackId: str (archive path)
                 - storedAt: str (ISO timestamp)
                 - error: Optional[str]
         """
@@ -117,35 +198,55 @@ class GCSFeedbackService:
             # Ensure bucket exists
             bucket = self._ensure_bucket_exists()
 
-            # Generate unique feedback ID (filename)
-            feedback_id = self._generate_feedback_id(feedback.timestamp)
+            # Generate server timestamp (single source of truth)
+            created_at = datetime.utcnow().isoformat() + "Z"
+
+            # Get current date and check if we need to clear latest folder
+            current_date = self._get_current_date()
+            self._check_and_clear_latest_folder(current_date)
+
+            # Generate paths for both locations (with positive/negative prefix)
+            date_folder, archive_path, latest_path = self._generate_feedback_paths(
+                created_at,
+                feedback.feedback
+            )
 
             # Prepare feedback data as JSON
             feedback_data = {
                 "messageId": feedback.messageId,
                 "feedback": feedback.feedback,
                 "reason": feedback.reason,
-                "timestamp": feedback.timestamp,
-                "messageContent": feedback.messageContent,
-                "storedAt": datetime.utcnow().isoformat() + "Z"
+                "userQuestion": feedback.userQuestion,
+                "aiAnswer": feedback.aiAnswer,
+                "createdAt": created_at
             }
 
             # Convert to NDJSON (single line JSON)
             ndjson_content = json.dumps(feedback_data, ensure_ascii=False)
 
-            # Upload to GCS
-            blob = bucket.blob(f"feedback/{feedback_id}")
-            blob.upload_from_string(
+            # Upload to BOTH locations
+            # 1. Archive (permanent, organized by date)
+            archive_blob = bucket.blob(archive_path)
+            archive_blob.upload_from_string(
                 ndjson_content,
                 content_type="application/x-ndjson"
             )
 
-            print(f"[GCS] Feedback logged successfully: {feedback_id}")
+            # 2. Latest (today's data only, for easy consumption)
+            latest_blob = bucket.blob(latest_path)
+            latest_blob.upload_from_string(
+                ndjson_content,
+                content_type="application/x-ndjson"
+            )
+
+            print(f"[GCS] Feedback logged successfully:")
+            print(f"  - Archive: {archive_path}")
+            print(f"  - Latest: {latest_path}")
 
             return {
                 "success": True,
-                "feedbackId": feedback_id,
-                "storedAt": feedback_data["storedAt"],
+                "feedbackId": archive_path,  # Return archive path as ID
+                "storedAt": feedback_data["createdAt"],
                 "error": None
             }
 
