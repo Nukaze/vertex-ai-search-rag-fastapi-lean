@@ -32,15 +32,18 @@ class FeedbackRequest(BaseModel):
         max_length=500
     )
 
-    timestamp: str = Field(
+    userQuestion: str = Field(
         ...,
-        description="ISO 8601 timestamp when feedback was given"
+        description="User's original question that triggered the AI response",
+        min_length=1,
+        max_length=1000
     )
 
-    messageContent: Optional[str] = Field(
-        None,
-        description="First 200 chars of the AI message for context",
-        max_length=200
+    aiAnswer: str = Field(
+        ...,
+        description="Complete AI response that user is giving feedback on",
+        min_length=1,
+        max_length=5000
     )
 
 
