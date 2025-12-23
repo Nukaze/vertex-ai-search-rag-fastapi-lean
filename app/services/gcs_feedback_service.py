@@ -53,25 +53,18 @@ class GCSFeedbackService:
             credentials=self.credentials
         )
 
-    def _ensure_bucket_exists(self) -> storage.Bucket:
+    def _get_bucket(self) -> storage.Bucket:
         """
-        Ensure feedback bucket exists, create if not
+        Get feedback bucket (assumes bucket already exists)
 
         Returns:
             GCS Bucket object
+
+        Raises:
+            Exception if bucket doesn't exist or no permissions
         """
-        try:
-            bucket = self.storage_client.get_bucket(self.feedback_bucket_name)
-            return bucket
-        except Exception:
-            # Bucket doesn't exist, create it
-            print(f"[GCS] Bucket '{self.feedback_bucket_name}' not found, creating...")
-            bucket = self.storage_client.create_bucket(
-                self.feedback_bucket_name,
-                location="ASIA-SOUTHEAST1"  # Bangkok region
-            )
-            print(f"[GCS] Bucket '{self.feedback_bucket_name}' created successfully")
-            return bucket
+        bucket = self.storage_client.get_bucket(self.feedback_bucket_name)
+        return bucket
 
     def _get_current_date(self) -> str:
         """
@@ -94,7 +87,7 @@ class GCSFeedbackService:
             current_date: Current date in YYYY-MM-DD format
         """
         try:
-            bucket = self.storage_client.get_bucket(self.feedback_bucket_name)
+            bucket = self._get_bucket()
             marker_blob = bucket.blob("chat-feedback/latest/.last_cleared")
 
             # Check if marker exists and get last cleared date
@@ -195,8 +188,8 @@ class GCSFeedbackService:
                 - error: Optional[str]
         """
         try:
-            # Ensure bucket exists
-            bucket = self._ensure_bucket_exists()
+            # Get bucket (assumes bucket already exists)
+            bucket = self._get_bucket()
 
             # Generate server timestamp (single source of truth)
             created_at = datetime.utcnow().isoformat() + "Z"
