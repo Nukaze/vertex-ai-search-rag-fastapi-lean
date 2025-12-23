@@ -55,15 +55,14 @@ class GCSFeedbackService:
 
     def _get_bucket(self) -> storage.Bucket:
         """
-        Get feedback bucket (assumes bucket already exists)
+        Get bucket reference (no API call, just returns bucket object)
 
         Returns:
-            GCS Bucket object
-
-        Raises:
-            Exception if bucket doesn't exist or no permissions
+            GCS Bucket object (lightweight reference, doesn't verify existence)
         """
-        bucket = self.storage_client.get_bucket(self.feedback_bucket_name)
+        # Use bucket() instead of get_bucket() to avoid storage.buckets.get permission
+        # This creates a bucket reference without making an API call
+        bucket = self.storage_client.bucket(self.feedback_bucket_name)
         return bucket
 
     def _get_current_date(self) -> str:
