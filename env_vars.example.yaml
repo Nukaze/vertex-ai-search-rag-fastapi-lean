@@ -1,0 +1,8 @@
+# Environment variables for Cloud Run Service
+# Vertex AI Search RAG API
+
+GEMINI_API_KEY: "AIzaSxxxRE"
+GCP_PROJECT_ID: "expert-ai-chatbot"
+VERTEX_SEARCH_ENGINE_ID: "rag-engine-search-app_1xxxxx"
+VERTEX_SEARCH_LOCATION: "global"
+GCP_SERVICE_ACCOUNT_KEY: '{"type":"service_account","project_id":"expert-ai-chatbot","private_key_id":"xxxx","private_key":"-----BEGIN PRIVATE KEY-----\nXXXXaccount.com","universe_domain":"googleapis.com"}'
